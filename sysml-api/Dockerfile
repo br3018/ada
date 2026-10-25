@@ -1,8 +1,8 @@
 # Builds the SysML v2 Pilot API server (https://github.com/Systems-Modeling/SysML-v2-API-Services)
+# Built with the repository root as context (see compose.yaml and /.dockerignore)
 
 FROM eclipse-temurin:11-jdk AS build
 
-ARG SYSML_RELEASE=2026-04
 ARG SBT_VERSION=1.10.7
 
 RUN apt-get update \
@@ -13,8 +13,11 @@ RUN apt-get update \
 RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt-${SBT_VERSION}.tgz" | tar -xz -C /opt
 ENV PATH="/opt/sbt/bin:${PATH}"
 
+# The release tag comes from sysml-versions.env so it matches the Jupyter kernel
 WORKDIR /src
-RUN git clone --depth 1 --branch "${SYSML_RELEASE}" https://github.com/Systems-Modeling/SysML-v2-API-Services .
+COPY sysml-versions.env /tmp/
+RUN . /tmp/sysml-versions.env \
+    && git clone --depth 1 --branch "${SYSML_RELEASE}" https://github.com/Systems-Modeling/SysML-v2-API-Services .
 
 # Point at the compose 'db' service and keep the schema between restarts (upstream uses create-drop)
 RUN sed -i \

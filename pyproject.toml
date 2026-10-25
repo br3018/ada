@@ -1,7 +1,7 @@
 [project]
 name = "ada"
 version = "0.1.0"
-description = "Python scripts for SysML v2 models"
+description = "A development environment for carrying out system design and verification using SysML v2"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,3 +11,16 @@ dependencies = [
 [build-system]
 requires = ["uv_build>=0.12.19,<0.14"]
 build-backend = "uv_build"
+
+[dependency-groups]
+# Runs SysML notebooks and ada.publish (the SysML kernel itself is installed in the dev image)
+dev = [
+    "jupyter>=1.1.1",
+    "nbclient>=0.10",
+    "nbformat>=5.10",
+    "ruff>=0.17.2",
+]
+
+[tool.uv]
+# Ubuntu's python3.x-minimal lacks much of the standard library, so never build the venv on it
+python-preference = "only-managed"

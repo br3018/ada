@@ -1,0 +1,5 @@
+# Both Docker builds (.devcontainer and sysml-api) use the repository root as their context
+# so they can read sysml-versions.env. Send them only the files they copy.
+*
+!sysml-versions.env
+!.devcontainer/sysml-kernel.json

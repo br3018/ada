@@ -1,6 +1,8 @@
 """PySAM connector for the SysML v2 Pilot API server (see sysml-api/)."""
 
-from ansys.sam.sysml2.api.template_sysml2_api_connector import TemplateSysML2APIConnector
+from ansys.sam.sysml2.api.template_sysml2_api_connector import (
+    TemplateSysML2APIConnector,
+)
 from ansys.sam.sysml2.classes.http_request import HttpRequest
 
 DEFAULT_SERVER_URL = "http://localhost:9000"

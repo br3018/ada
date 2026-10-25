@@ -1,1 +1,1 @@
-"""Ada: system design verification against SysML v2 models."""
+"""Ada: a development environment for carrying out system design and verification using SysML v2."""

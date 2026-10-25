@@ -1,0 +1,16 @@
+{
+    "argv": [
+        "java",
+        "-cp",
+        "/usr/local/share/jupyter/kernels/sysml/*",
+        "org.omg.sysml.jupyter.kernel.ISysML",
+        "{connection_file}"
+    ],
+    "display_name": "SysML",
+    "env": {
+        "ISYSML_API_BASE_PATH": "http://localhost:9000"
+    },
+    "interrupt_mode": "message",
+    "language": "sysml",
+    "metadata": {}
+}
