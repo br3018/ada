@@ -1,0 +1,7 @@
+# .devcontainer/Dockerfile `source`s sysml-versions.env inside the Linux
+# container's shell. On Windows checkouts with core.autocrlf=true this file
+# otherwise gets CRLF line endings, and bash leaks a trailing \r into each
+# variable value, corrupting the SYSML_KERNEL_VERSION-based curl URL used to
+# download the Jupyter SysML kernel (curl: (3) URL rejected). Force LF
+# regardless of the local autocrlf setting.
+sysml-versions.env text eol=lf

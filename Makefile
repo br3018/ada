@@ -20,8 +20,9 @@ api-down: ## Stop the API server
 api-logs: ## Follow the API server logs
 	$(COMPOSE) logs -f api
 
-publish: ## Publish a model: make publish MODEL=models/foo.sysml [PROJECT=Foo]
-	@test -n "$(MODEL)" || { echo "usage: make publish MODEL=models/foo.sysml [PROJECT=Foo]" >&2; exit 2; }
+MODEL ?= model
+
+publish: ## Publish the model (default: the model/ directory): make publish [MODEL=model/foo.sysml] [PROJECT=Foo]
 	uv run python -m ada.publish $(MODEL) $(if $(PROJECT),--project "$(PROJECT)")
 
 lint: ## Run linters on the codebase

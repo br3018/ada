@@ -5,7 +5,7 @@ A development environment for carrying out system design and verification using 
 Models are written in SysML v2 textual notation (`.sysml` files) in VS Code, published to a local SysML v2 API server, and read from Python with [Ansys PySAM SysML2](https://sysml2.docs.pyansys.com/) for verification:
 
 ```text
-models/*.sysml ──make publish──▶ SysML v2 API server ──PySAM──▶ verification scripts
+model/*.sysml ──make publish──▶ SysML v2 API server ──PySAM──▶ verification scripts
                                  (localhost:9000)
 ```
 
@@ -31,7 +31,7 @@ Common tasks are wrapped in the [Makefile](Makefile). Run `make help` to list th
 
 | Path | Contents |
 | --- | --- |
-| [models/](models/) | The SysML v2 models (`.sysml` files). [example.sysml](models/example.sysml) is a small sample. |
+| [model/](model/) | The SysML v2 model (`.sysml` files), published together. [Model.sysml](model/Model.sysml) imports the parts defined in [PartLibrary.sysml](model/PartLibrary.sysml). |
 | [src/ada/](src/ada/) | The `ada` Python package: [publish.py](src/ada/publish.py) publishes models and [pilot_connector.py](src/ada/pilot_connector.py) connects PySAM to the API server. |
 | [sysml-api/](sysml-api/) | Docker build and compose file for the API server and its PostgreSQL database. |
 | [.devcontainer/](.devcontainer/) | Dev container image and configuration, including the SysML kernel's kernelspec. |
@@ -63,13 +63,15 @@ Port 9000 is forwarded to your machine.
 The API server only accepts model elements as JSON, not `.sysml` text. Models are parsed and published with the [SysML v2 Pilot Jupyter kernel](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation):
 
 ```sh
-make publish MODEL=models/example.sysml              # one project per top-level package
-make publish MODEL=models/example.sysml PROJECT=Foo  # choose the project name
+make publish                                    # every .sysml file under model/, one project per top-level package
+make publish MODEL=model/PartLibrary.sysml      # a single file, or another directory
+make publish MODEL=model/Foo.sysml PROJECT=Foo  # choose the project name (one top-level package only)
 ```
 
 This runs `python -m ada.publish` (see `uv run python -m ada.publish --help` for `--element`, `--server` and `--verbose`). Starting the kernel loads the standard library, so a publish takes about a minute.
 
-- If the file has parse errors, they are printed and nothing is published. Error locations give the line in the file; the `2.sysml` prefix only names the notebook cell the file was loaded into.
+- All the files are parsed together, so a package in one file can import a package from another, in any order.
+- If the model has parse errors, they are printed as `(file:line:column)` and nothing is published.
 - Each publish replaces the whole content of its project with a new commit, so a project holds one top-level package. Publishing the same package again adds a new commit to the same project.
 
 ## Reading models from Python
@@ -92,7 +94,7 @@ for p in project_manager.get_projects():
 
 Verification is not implemented yet. The intended approach:
 
-1. **Requirements live in the model.** Each model in `models/` carries its requirements and the attribute values they constrain (for example a mass limit and the masses of the parts).
+1. **Requirements live in the model.** The model in `model/` carries its requirements and the attribute values they constrain (for example a mass limit and the masses of the parts).
 2. **Checks are Python tests.** Each check loads the published project through PySAM (`SysML2ProjectManager.get_sysml_project`), finds the elements it needs (for example with `Project.find_elements_by_name`), reads their attribute values and asserts the requirement holds. Writing checks as pytest tests gives a pass or fail per requirement.
 3. **One command runs them.** A `make verify` target publishes the models and then runs the checks with `uv run pytest`.
 

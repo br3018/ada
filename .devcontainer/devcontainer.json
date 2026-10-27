@@ -49,7 +49,9 @@
 				// Notebooks, including the SysML kernel
 				"ms-toolsai.jupyter",
 				// Markdown linting
-				"davidanson.vscode-markdownlint"
+				"davidanson.vscode-markdownlint",
+				// Makefile support
+				"ms-vscode.makefile-tools"
 			]
 		}
 	},

@@ -1,12 +1,13 @@
 """Publish a SysML v2 textual model to the API server using the pilot Jupyter kernel.
 
-The API server only accepts model elements as JSON, so the file is parsed by the SysML kernel
-(installed in the dev image) and pushed with its %publish magic.
+The API server only accepts model elements as JSON, so the model is parsed by the SysML kernel
+(installed in the dev image) and pushed with its %publish magic. The model is a .sysml file or a
+directory of them; the files are parsed together, so packages can import each other across files.
 
 Each %publish replaces the whole content of its project with the published element, so every
 top-level element goes to its own project, named after the element unless --project is given.
 
-Usage: python -m ada.publish FILE [--element NAME] [--project NAME] [--server URL] [--verbose]
+Usage: python -m ada.publish [PATH] [--element NAME] [--project NAME] [--server URL] [--verbose]
 """
 
 import argparse
@@ -25,6 +26,9 @@ from ada.pilot_connector import DEFAULT_SERVER_URL
 KERNEL_NAME = "sysml"
 # Starting the kernel loads the whole standard library, which takes most of a minute
 TIMEOUT_SECONDS = 600
+DEFAULT_MODEL_PATH = Path("model")
+# The kernel names the cell it parsed, e.g. "(2.sysml line : 2 column : 19)"
+ERROR_LOCATION = re.compile(r"\(\d+\.sysml line : (\d+) column : (\d+)\)")
 TOP_LEVEL_PACKAGE = re.compile(
     r"^(?:standard\s+)?(?:library\s+)?package\s+('[^']+'|[\w$]+)", re.MULTILINE
 )
@@ -33,6 +37,42 @@ TOP_LEVEL_PACKAGE = re.compile(
 def find_top_level_packages(source: str) -> list[str]:
     """Return the names of packages declared at the start of a line (i.e. not indented)."""
     return TOP_LEVEL_PACKAGE.findall(source)
+
+
+def model_files(path: Path) -> list[Path]:
+    """Return the .sysml files that make up the model: path itself, or every one under it."""
+    return sorted(path.rglob("*.sysml")) if path.is_dir() else [path]
+
+
+class CombinedSource:
+    """The text of several files joined into one kernel cell, with a map back to each file's lines."""
+
+    def __init__(self, files: list[Path]):
+        self.starts: list[tuple[int, Path]] = []  # (first line in the cell, file)
+        texts = []
+        line = 1
+        for file in files:
+            text = file.read_text()
+            if not text.endswith("\n"):
+                text += "\n"
+            self.starts.append((line, file))
+            texts.append(text)
+            line += text.count("\n")
+        self.text = "".join(texts)
+
+    def locate(self, line: int) -> tuple[Path, int]:
+        """Return the file and line within it for a line of the combined text."""
+        start, file = next((s, f) for s, f in reversed(self.starts) if s <= line)
+        return file, line - start + 1
+
+    def relabel_errors(self, text: str) -> str:
+        """Rewrite the kernel's cell-based error locations as file:line:column."""
+
+        def replace(match: re.Match) -> str:
+            file, line = self.locate(int(match.group(1)))
+            return f"({file}:{line}:{match.group(2)})"
+
+        return ERROR_LOCATION.sub(replace, text)
 
 
 def cell_text(cell) -> str:
@@ -66,11 +106,15 @@ def server_problem(server_url: str) -> str | None:
 
 
 def publish(
-    path: Path, elements: list[str], project: str | None, server_url: str, verbose: bool
+    model: CombinedSource,
+    elements: list[str],
+    project: str | None,
+    server_url: str,
+    verbose: bool,
 ) -> bool:
-    """Parse the model at path and publish each element. Returns True on success."""
+    """Parse the model and publish each element. Returns True on success."""
     project_arg = f'--project="{project}" ' if project else ""
-    sources = [f"%repo {server_url}", path.read_text()]
+    sources = [f"%repo {server_url}", model.text]
     sources += [f"%publish {project_arg}{element}" for element in elements]
     nb = nbformat.v4.new_notebook(
         cells=[nbformat.v4.new_code_cell(source) for source in sources]
@@ -78,11 +122,12 @@ def publish(
 
     client = NotebookClient(nb, kernel_name=KERNEL_NAME, timeout=TIMEOUT_SECONDS)
     kernel_output = None if verbose else subprocess.DEVNULL
-    print(f"Starting the SysML kernel and parsing {path}...", flush=True)
+    names = ", ".join(str(file) for _, file in model.starts)
+    print(f"Starting the SysML kernel and parsing {names}...", flush=True)
     with client.setup_kernel(stdout=kernel_output, stderr=kernel_output):
         for index, cell in enumerate(nb.cells):
             client.execute_cell(cell, index)
-            text = cell_text(cell)
+            text = model.relabel_errors(cell_text(cell))
             print(text, end="", flush=True)
             if has_errors(text):
                 return False
@@ -91,10 +136,16 @@ def publish(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("file", type=Path, help="the .sysml file to publish")
+    parser.add_argument(
+        "path",
+        type=Path,
+        nargs="?",
+        default=DEFAULT_MODEL_PATH,
+        help=f"a .sysml file, or a directory whose .sysml files are published together (default: {DEFAULT_MODEL_PATH})",
+    )
     parser.add_argument(
         "--element",
-        help="fully qualified element to publish (default: each top-level package in the file)",
+        help="fully qualified element to publish (default: each top-level package in the model)",
     )
     parser.add_argument(
         "--project", help="project to create or update (default: the element's name)"
@@ -109,18 +160,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    elements = (
-        [args.element]
-        if args.element
-        else find_top_level_packages(args.file.read_text())
-    )
+    if not args.path.exists():
+        parser.error(f"{args.path} does not exist")
+    files = model_files(args.path)
+    if not files:
+        parser.error(f"no .sysml files found in {args.path}")
+    model = CombinedSource(files)
+
+    elements = [args.element] if args.element else find_top_level_packages(model.text)
     if not elements:
         parser.error(
-            f"no top-level package found in {args.file}; name one with --element"
+            f"no top-level package found in {args.path}; name one with --element"
         )
     if args.project and len(elements) > 1:
         parser.error(
-            f"{args.file} has {len(elements)} top-level packages ({', '.join(elements)}) and each publish "
+            f"{args.path} has {len(elements)} top-level packages ({', '.join(elements)}) and each publish "
             "replaces the project's content; drop --project to publish each to its own project, "
             "or pick one with --element"
         )
@@ -136,11 +190,7 @@ def main() -> int:
         )
         return 1
 
-    return (
-        0
-        if publish(args.file, elements, args.project, args.server, args.verbose)
-        else 1
-    )
+    return 0 if publish(model, elements, args.project, args.server, args.verbose) else 1
 
 
 if __name__ == "__main__":
