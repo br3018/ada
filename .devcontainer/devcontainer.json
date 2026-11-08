@@ -3,30 +3,17 @@
 {
 	"name": "Ada",
 	"build": {
-		"dockerfile": "Dockerfile",
-		// The repository root, so the build can read the pilot release from sysml-versions.env
-		"context": ".."
+		"dockerfile": "Dockerfile"
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/node:2.1.1": {},
 		"ghcr.io/anthropics/devcontainer-features/claude-code:1": {},
 		"ghcr.io/devcontainers/features/github-cli:1": {
 			"version": "latest"
-		},
-		// Docker in Docker for running the SysML v2 API server (see sysml-api/).
-		"ghcr.io/devcontainers/features/docker-in-docker:4.1.3": {}
-	},
-	// Set up virtual environment in container
-	"postCreateCommand": "uv sync",
-
-	// Forward the SysML v2 API server to the host (Swagger UI at /docs/).
-	"forwardPorts": [9000],
-	"portsAttributes": {
-		"9000": {
-			"label": "SysML v2 API",
-			"onAutoForward": "notify"
 		}
 	},
+	// Create the virtual environment in the container.
+	"postCreateCommand": "uv sync",
 
 	"remoteUser": "vscode",
 
@@ -43,11 +30,9 @@
 				"anthropic.claude-code",
 				// GitHub extensions
 				"github.vscode-pull-request-github",
-				// Python verification tools
+				// Python tools for verification
 				"ms-python.python",
 				"ms-python.vscode-pylance",
-				// Notebooks, including the SysML kernel
-				"ms-toolsai.jupyter",
 				// Markdown linting
 				"davidanson.vscode-markdownlint",
 				// Makefile support
@@ -61,8 +46,8 @@
 	],
 	"containerEnv": {
 		"CLAUDE_CONFIG_DIR": "/home/vscode/.claude",
-		// Keep the venv on the container filesystem, next to uv's cache and Python. The workspace can be
-		// a slow Windows mount, and a venv there outlives the uv-managed Python it links to.
+		// Keep the venv on the container filesystem, with the uv cache and Python. The workspace can be
+		// a slow Windows mount. A venv there also stays after the container removes its Python.
 		"UV_PROJECT_ENVIRONMENT": "/home/vscode/.venvs/ada"
 	}
 }
