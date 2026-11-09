@@ -1,13 +1,8 @@
 # Ada
 
-A development environment for carrying out system design and verification using SysML v2.
+Ada is a development environment for system design and verification with SysML v2.
 
-Models are written in SysML v2 textual notation (`.sysml` files) in VS Code, published to a local SysML v2 API server, and read from Python with [Ansys PySAM SysML2](https://sysml2.docs.pyansys.com/) for verification:
-
-```text
-model/*.sysml ──make publish──▶ SysML v2 API server ──PySAM──▶ verification scripts
-                                 (localhost:9000)
-```
+You write the models in SysML v2 textual notation (`.sysml` files). The [OpenSysML](https://opensysml.org) `sysml` command-line tool loads and validates the models.
 
 ## Prerequisites
 
@@ -16,117 +11,78 @@ model/*.sysml ──make publish──▶ SysML v2 API server ──PySAM──�
 
 ## Setup
 
-Open the repository in VS Code and run **Dev Containers: Reopen in Container**. The dev container provides:
+The dev container contains all the tools for Ada.
 
-- the [Syside](https://syside.sensmetry.com/) editor extension for writing SysML v2 models
-- the SysML v2 Pilot Jupyter kernel (with Java and Graphviz) for parsing and publishing models
-- Docker, for running the SysML v2 API server
+To open the repository in the dev container:
+
+1. Open the repository in VS Code.
+2. Run the command **Dev Containers: Reopen in Container**.
+3. Wait until VS Code builds and starts the container.
+
+The dev container contains these tools:
+
+- the OpenSysML `sysml` command-line tool, which the image installs from `https://opensysml.org/install.sh`
+- the [Syside](https://syside.sensmetry.com/) editor extension for SysML v2 models
 - the [uv](https://docs.astral.sh/uv/) package manager
+- Claude Code, the GitHub CLI and Node.js
 
-When the container is created, `uv sync` installs Python (the version in [.python-version](.python-version)) and the project's dependencies. The virtual environment lives at `/home/vscode/.venvs/ada`, outside the workspace, and VS Code is configured to use it. Run commands in it with `uv run`. After changing dependencies in [pyproject.toml](pyproject.toml), run `make setup` to update it.
+When VS Code creates the container, it runs `uv sync`. This command installs Python and the Python dependencies in [pyproject.toml](pyproject.toml). The Python version is in [.python-version](.python-version).
 
-Common tasks are wrapped in the [Makefile](Makefile). Run `make help` to list them.
+Ada is not a Python package. uv only manages the Python version and the virtual environment.
+
+The virtual environment is at `/home/vscode/.venvs/ada`, outside the workspace. VS Code uses this environment. Use `uv run` to run a command in it.
+
+## Commands
+
+Run all commands in the dev container. The [Makefile](Makefile) contains shortcuts for the usual commands. `make help` Shows the list of targets.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| [model/](model/) | The SysML v2 model (`.sysml` files), published together. [Model.sysml](model/Model.sysml) imports the parts defined in [PartLibrary.sysml](model/PartLibrary.sysml). |
-| [src/ada/](src/ada/) | The `ada` Python package: [publish.py](src/ada/publish.py) publishes models and [pilot_connector.py](src/ada/pilot_connector.py) connects PySAM to the API server. |
-| [sysml-api/](sysml-api/) | Docker build and compose file for the API server and its PostgreSQL database. |
-| [.devcontainer/](.devcontainer/) | Dev container image and configuration, including the SysML kernel's kernelspec. |
-| [sysml-versions.env](sysml-versions.env) | The SysML v2 pilot release used by both the API server and the kernel. |
-| [Makefile](Makefile) | Shortcuts for common tasks. |
+| [model/](model/) | The SysML v2 model. [Model.sysml](model/Model.sysml) imports the parts in [PartLibrary.sysml](model/PartLibrary.sysml). |
+| [.devcontainer/](.devcontainer/) | The dev container image and configuration. |
+| [Makefile](Makefile) | Shortcuts for the usual commands. |
+| [pyproject.toml](pyproject.toml), [uv.lock](uv.lock), [.python-version](.python-version) | The Python version and the Python dependencies. |
 
-## Running the API server
+## OpenSysML version
 
-The [SysML v2 Pilot API server](https://github.com/Systems-Modeling/SysML-v2-API-Services) runs in Docker inside the dev container, backed by a PostgreSQL database:
+The [Dockerfile](.devcontainer/Dockerfile) pins the OpenSysML release in the `OPENSYSML_VERSION` build argument. The current release is `v0.12.1`.
 
-```sh
-make api-up      # build and start
-make api-logs    # follow the server logs
-make api-down    # stop
-```
+To change the OpenSysML release:
 
-The first `make api-up` compiles the server from source, which takes several minutes. After it starts, the server takes some time before it answers requests. Once it does:
+1. Find the release tag on the [OpenSysML releases](https://github.com/Open-MBEE/OpenSysML/releases) page.
+2. Set `OPENSYSML_VERSION` in [.devcontainer/Dockerfile](.devcontainer/Dockerfile) to that tag.
+3. Run the command **Dev Containers: Rebuild Container**.
+4. Run `sysml -version` and make sure that it shows the new release.
+5. Run `make sysml-validate`.
 
-- API: `http://localhost:9000` (e.g. `curl localhost:9000/projects`)
-- Swagger UI: `http://localhost:9000/docs/`
+## SysMLv2 Validation
 
-Port 9000 is forwarded to your machine.
+`make sysml-validate` checks the model complies to the SysMLv2 specification. It runs `sysml -strict -validate $(MODEL)`. The default value of `MODEL` is `model`.
 
-> [!WARNING]
-> The server has no authentication and uses fixed development credentials (see [sysml-api/compose.yaml](sysml-api/compose.yaml)). It is meant for local use only; don't expose port 9000 beyond your machine.
+- The `sysml` tool loads all the files that you give it as one model. A declaration in one file can refer to a declaration in a different file, in any order.
+- `-validate` reports the diagnostics of the model. The tool exits with a nonzero code when the model has an error.
+- `-strict` applies the SysML v2 standard strictly. Notation that the standard does not allow is an error, not a warning.
 
-## Publishing a model
+The nonzero exit code lets a build or a CI job stop when the model has an error.
 
-The API server only accepts model elements as JSON, not `.sysml` text. Models are parsed and published with the [SysML v2 Pilot Jupyter kernel](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation):
+To validate the model:
 
-```sh
-make publish                                    # every .sysml file under model/, one project per top-level package
-make publish MODEL=model/PartLibrary.sysml      # a single file, or another directory
-make publish MODEL=model/Foo.sysml PROJECT=Foo  # choose the project name (one top-level package only)
-```
+1. Open a terminal in the dev container.
+2. Run `make sysml-validate`.
+3. Read the output. The tool gives one line for each package and one line for the full model.
+4. If the tool reports an error, correct the `.sysml` file at the location in the error.
+5. Do steps 2 to 4 again until the tool reports no errors.
 
-This runs `python -m ada.publish` (see `uv run python -m ada.publish --help` for `--element`, `--server` and `--verbose`). Starting the kernel loads the standard library, so a publish takes about a minute.
+## Problems and solutions
 
-- All the files are parsed together, so a package in one file can import a package from another, in any order.
-- If the model has parse errors, they are printed as `(file:line:column)` and nothing is published.
-- Each publish replaces the whole content of its project with a new commit, so a project holds one top-level package. Publishing the same package again adds a new commit to the same project.
-
-## Reading models from Python
-
-PySAM only ships a connector for Ansys SAM, so use `ada.pilot_connector.PilotSysML2APIConnector` with the pilot server:
-
-```python
-from ansys.sam.sysml2 import SysML2ProjectManager
-from ada.pilot_connector import PilotSysML2APIConnector
-
-project_manager = SysML2ProjectManager(PilotSysML2APIConnector("http://localhost:9000"))
-for p in project_manager.get_projects():
-    print(p["name"], p["@id"])
-```
-
-> [!NOTE]
-> Listing projects works, but loading a project's content (`get_sysml_project`) does not work yet. PySAM requests `/projects/{id}/commits/head/...`. `head` is a shortcut that Ansys SAM supports, but the pilot server needs a real commit ID. The connector needs to resolve the branch's head commit, and probably to follow the server's result paging for larger models.
-
-## Verification (planned)
-
-Verification is not implemented yet. The intended approach:
-
-1. **Requirements live in the model.** The model in `model/` carries its requirements and the attribute values they constrain (for example a mass limit and the masses of the parts).
-2. **Checks are Python tests.** Each check loads the published project through PySAM (`SysML2ProjectManager.get_sysml_project`), finds the elements it needs (for example with `Project.find_elements_by_name`), reads their attribute values and asserts the requirement holds. Writing checks as pytest tests gives a pass or fail per requirement.
-3. **One command runs them.** A `make verify` target publishes the models and then runs the checks with `uv run pytest`.
-
-Step 2 depends on fixing the connector so that it can load project content (see the note under [Reading models from Python](#reading-models-from-python)).
-
-## Interactive notebooks
-
-The SysML kernel can also be used interactively. Create a `.ipynb` notebook in VS Code, select the **SysML** kernel, and enter SysML in the cells. Magic commands such as `%show`, `%viz` and `%publish` work there too (run `%help` for the full list). Notebooks publish to `http://localhost:9000`.
-
-## Updating the pilot release
-
-The API server and the kernel must come from the same pilot release. Both read it from [sysml-versions.env](sysml-versions.env):
-
-- `SYSML_RELEASE`: a tag of [SysML-v2-API-Services](https://github.com/Systems-Modeling/SysML-v2-API-Services/tags), such as `2026-04`.
-- `SYSML_KERNEL_VERSION`: the kernel version for the same release. It is the `SYSML_VERSION` in `install/jupyter/install.sh` of [SysML-v2-Release](https://github.com/Systems-Modeling/SysML-v2-Release) at the same tag (`2026-04` is `0.59.0`).
-- `SYSML_KERNEL_SHA256`: the checksum of the kernel's conda-forge package, which you can compute with:
-
-  ```sh
-  curl -fsSL https://conda.anaconda.org/conda-forge/noarch/jupyter-sysml-kernel-<version>-pyhd8ed1ab_0.conda | sha256sum
-  ```
-
-Then rebuild the dev container and run `make api-up`.
-
-## Troubleshooting
-
-- **`make publish` says the API server isn't responding.** Start it with `make api-up`. After it starts, it takes some time before it answers requests; `make api-logs` shows its progress.
-- **`make publish` prints `ERROR:` lines.** These come from the SysML parser or from the publish itself. Nothing is published until the model parses cleanly.
+- **The shell reports `sysml: command not found`.** The dev container image does not contain the tool. Run the command **Dev Containers: Rebuild Container**.
+- **`make sysml-validate` reports an error.** The model has an error at the given location. Run `sysml -explain <code>` to get the cause and the solution.
+- **`-validate=<object>` reports `no instance of "<object>"`.** The object does not exist yet. Add `-instantiate <object>` to the command.
+- **`make` reports `Clock skew detected`.** The workspace can be on a Windows mount, with file times that differ from the container clock. All the targets are phony, so this warning has no effect on the result. A phony target is a command name, not a file that `make` builds.
 
 ## Resources
 
-- [PySAM SysML2 docs](https://sysml2.docs.pyansys.com/)
-- [SysML-v2-Pilot-Implementation](https://github.com/Systems-Modeling/SysML-v2-Pilot-Implementation): the reference implementation, including the Jupyter kernel
-- [SysML-v2-API-Services](https://github.com/Systems-Modeling/SysML-v2-API-Services): the pilot API server
-- [SysML-v2-Release](https://github.com/Systems-Modeling/SysML-v2-Release): pilot releases, specifications and training material
-- [Syside](https://syside.sensmetry.com/): the SysML v2 editor extension used in the dev container
+- [OpenSysML MDK](https://runtime.opensysml.org/): the `sysml` command-line tool
+- [SysML-v2-Release](https://github.com/Systems-Modeling/SysML-v2-Release): the SysML v2 specifications and training material
